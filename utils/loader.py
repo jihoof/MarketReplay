@@ -1,18 +1,9 @@
-from flask import Flask, request, jsonify, render_template
 import pandas as pd
-import os
-
-app = Flask(__name__)
-
-# 🔥 CSV 경로 안전하게 잡기
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FILE_PATH = os.path.join(BASE_DIR, "data", "NVDA_20240101-20251231.csv")
 
 
-# 🔥 거래량 변환
 def parse_volume(v):
     if isinstance(v, str):
-        v = v.strip().upper()
+        v = v.replace(",", "").strip().upper()
 
         if "B" in v:
             return float(v.replace("B", "")) * 1_000_000_000
@@ -26,19 +17,34 @@ def parse_volume(v):
     except:
         return 0
 
-def load_data(interval):
-    df = pd.read_csv(FILE_PATH)
 
-    df = df.rename(columns={"hight": "High", "Price": "Close"})
+def load_stock_data(file_path, start_date=None, end_date=None, interval="day"):
+    df = pd.read_csv(file_path)
+
+    # 🔥 컬럼 정리 (CSV마다 다를 수 있음)
+    df = df.rename(columns={
+        "hight": "High",
+        "price": "Close",
+        "vol.": "Volume",
+        "Vol.": "Volume"
+    })
+
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
 
-    # 거래량 처리
-    if "Vol." in df.columns:
-        df["Volume"] = df["Vol."].apply(parse_volume)
+    # 🔥 거래량 처리
+    if "Volume" in df.columns:
+        df["Volume"] = df["Volume"].apply(parse_volume)
+
+    # 🔥 날짜 필터
+    if start_date:
+        df = df[df["Date"] >= pd.to_datetime(start_date)]
+    if end_date:
+        df = df[df["Date"] <= pd.to_datetime(end_date)]
 
     df = df.set_index("Date")
 
+    # 🔥 리샘플링
     if interval == "week":
         df = df.resample("W").agg({
             "Open": "first",
@@ -56,23 +62,4 @@ def load_data(interval):
             "Volume": "sum"
         })
 
-    df = df.reset_index()
-
-    return df.to_dict(orient="records")
-
-
-# 🔥 메인 페이지
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-
-# 🔥 데이터 API
-@app.route("/data")
-def data():
-    interval = request.args.get("interval", "day")
-    return jsonify(load_data(interval))
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    return df.dropna()
