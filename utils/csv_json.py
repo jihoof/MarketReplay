@@ -1,47 +1,64 @@
 import csv
-import json
-import os
+from datetime import datetime
+from db import stocks  # 설정하신 db 모듈의 stocks 컬렉션
 
-def csv_to_json(csv_file_path, json_file_path=None):
+def load_csv_to_mongodb(csv_file_path, stock_name):
     """
-    CSV 파일을 읽어서 각 행을 딕셔너리로 변환 후 JSON 리스트로 반환.
-    옵션으로 JSON 파일로 저장 가능.
-
-    CSV 예시 행:
-    "10/15/2024","131.60","137.87","138.57","128.74","377.83M","-4.69%"
-    컬럼: date, open, high, low, close, volume, change
+    CSV 데이터를 읽어 MongoDB에 datetime 형식으로 저장합니다.
     """
-    data = []
+    data_list = []
 
-    # CSV 읽기
-    with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
-        reader = csv.reader(csvfile)
-        for i, row in enumerate(reader):
-            # 행이 비어있으면 무시
-            if not row or i == 0:
-                continue
+    try:
+        with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
+            # 첫 줄(헤더)을 건너뛰기 위해 DictReader 대신 일반 reader 사용
+            reader = csv.reader(csvfile)
+            header = next(reader) # 헤더 스킵
 
-            # 딕셔너리 변환
-            record = {
-                "date": row[0],
-                "price": float(row[1]),
-                "open": float(row[2]),
-                "hight": float(row[3]),
-                "low": float(row[4]),
-                "vol.": row[5],
-                "change": row[6]
-            }
-            data.append(record)
+            for row in reader:
+                if not row: continue
 
-    # JSON 파일 저장 옵션
-    if json_file_path:
-        with open(json_file_path, 'w', encoding='utf-8') as jsonfile:
-            json.dump(data, jsonfile, indent=4, ensure_ascii=False)
+                # 날짜 처리: "MM/DD/YYYY" -> datetime 객체
+                # 만약 CSV 날짜 형식이 "YYYY-MM-DD"라면 "%Y-%m-%d"로 수정하세요.
+                try:
+                    parsed_date = datetime.strptime(row[0], "%m/%d/%Y")
+                except ValueError:
+                    # 다른 흔한 형식인 YYYY-MM-DD 시도
+                    parsed_date = datetime.strptime(row[0], "%Y-%m-%d")
 
-    return data
+                record = {
+                    "date": parsed_date,        # MongoDB Date 객체로 저장
+                    "close": float(row[1].replace(',', '')), # 천단위 콤마 제거 후 float
+                    "open": float(row[2].replace(',', '')),
+                    "high": float(row[3].replace(',', '')),
+                    "low": float(row[4].replace(',', '')),
+                    "volume": row[5],
+                    "change": row[6]
+                }
+                data_list.append(record)
 
+        # 1. 기존에 같은 이름(예: NVDA)의 데이터가 있다면 삭제 (중복 방지)
+        stocks.delete_one({"name": stock_name})
 
-if __name__ == '__main__':
-    csv_data = csv_to_json("C:/Users/jihoo/Documents/Github/MarketReplay/data/NVDA_20240101-20251231.csv")
-    print(json.dumps(csv_data, indent=4, ensure_ascii=False))
-    
+        # 2. 새로운 데이터 삽입
+        final_document = {
+            "name": stock_name,
+            "data": data_list,
+            "last_updated": datetime.now()
+        }
+        
+        result = stocks.insert_one(final_document)
+        
+        print(f"✅ {stock_name} 데이터 적재 완료!")
+        print(f"   - 총 데이터 개수: {len(data_list)}개")
+        print(f"   - MongoDB ID: {result.inserted_id}")
+
+    except FileNotFoundError:
+        print(f"❌ 파일을 찾을 수 없습니다: {csv_file_path}")
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}")
+
+# --- 실행부 ---
+if __name__ == "__main__":
+    # 경로를 본인의 환경에 맞게 수정하세요.
+    target_csv = "C:/Users/jihoo/Documents/Github/MarketReplay/data/NVDA_20240101-20251231.csv"
+    load_csv_to_mongodb(target_csv, "NVDA")
