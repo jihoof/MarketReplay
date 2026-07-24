@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import filedialog
 
 def main():
+
     while True:
         print("\n=== 증권 시뮬레이터 ===")
         print("0. 로그인/회원가입")
@@ -22,15 +23,34 @@ def main():
 
             select3 = module.input_int(0, 2, "선택: ", "잘못된 입력입니다. 다시 입력해주세요.")
             if select3 == 0:
-                #TODO
-                pass
+                auth.sign_up()
+
             elif select3 == 1:
-                #TODO
-                pass
+                if account:
+                    print("이미 로그인 되어 있습니다.")
+                    module.enter()
+                    continue
+
+                account = auth.sign_in()
+                module.enter()
+
+                if account[1] == True:
+                    print(f"{account[0]['id']}님 환영합니다!")
+                    module.enter()
+                else:
+                    print("로그인에 실패하였습니다.")
+                    module.enter()
+                    continue
+
             elif select3 == 2:
-                #TODO
-                pass    
-            
+                delete_result = auth.delete_account()
+                if delete_result:  
+                    print("계정이 성공적으로 삭제되었습니다.")
+                    module.enter() 
+                else:
+                    print("계정 삭제에 실패하였습니다.")
+                    module.enter()
+
         if select == 1:
             while True: 
                 print("\n[ 증권 관리 ]")
